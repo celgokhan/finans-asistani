@@ -7,7 +7,7 @@ import { monthSummary, monthsWithData, trend, cardsForMonth, cardPaymentStatus, 
 import { prepareImage, ocrImage, parseReceiptText } from './receipt.js';
 import { encryptJSON, decryptJSON, blobToDataURL, dataURLToBlob } from './backup.js';
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.3';
 const DEFAULT_SETTINGS = {
   ownerNames: [], incomeSources: [], budgets: {}, rules: [], goals: [], assets: [], rates: {}, lastBackupAt: null,
 };
@@ -128,10 +128,17 @@ function render() {
   $('#month-label').textContent = ayAdi(S.ym);
   $$('#tabs [data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab));
   const v = $('#view');
-  if (S.tab === 'ozet') v.innerHTML = viewOzet();
-  else if (S.tab === 'hareket') v.innerHTML = viewHareket();
-  else if (S.tab === 'plan') v.innerHTML = viewPlan();
-  else v.innerHTML = viewTuyo();
+  try {
+    if (S.tab === 'ozet') v.innerHTML = viewOzet();
+    else if (S.tab === 'hareket') v.innerHTML = viewHareket();
+    else if (S.tab === 'plan') v.innerHTML = viewPlan();
+    else v.innerHTML = viewTuyo();
+  } catch (err) {
+    // Bir bölüm hata verirse ekran eski ayda donup kalmasın; hatayı göster
+    console.error(err);
+    v.innerHTML = `<div class="card"><h2>⚠️ Bu ekran gösterilemedi</h2><p class="small" style="margin:0">${ayAdi(S.ym)} için hesaplama sırasında bir hata oluştu. Diğer aylara ve sekmelere geçebilirsin. Bu mesajı geliştiriciye iletirsen düzeltilir:</p>
+      <div class="note" style="margin:10px 0 0;word-break:break-word;font-family:monospace">${esc(VERSION + ' · ' + S.tab + ' · ' + S.ym + ' · ' + (err && err.message))}</div></div>`;
+  }
 }
 
 function tipHTML(t) {
@@ -210,7 +217,10 @@ function cardDueCard(st, ps, compact) {
   const m = st.meta;
   const stText = { paid: 'Tamamı ödendi', open: ps.daysLeft >= 0 ? `${ps.daysLeft} gün kaldı` : 'Ödeme bekleniyor', partial: 'Kısmen ödendi', 'partial-late': 'Eksik ödendi', late: 'Gecikti', none: 'Borç yok' }[ps.status];
   const use = m.limit ? Math.min(1, (m.totalDue + (m.remainingInstallments || 0)) / m.limit) : null;
+  const cutYm = (m.cutDate || '').slice(0, 7);
+  const label = cutYm ? `${ayAdi(cutYm)} ekstresi` + (cutYm !== S.ym && (m.dueDate || '').startsWith(S.ym) ? ' · bu ay ödenecek' : '') : 'Ekstre';
   return `<div class="card"><h2>💳 ${esc(st.bank)} •••• ${esc(m.cardLast4 || '')}<span class="right"><span class="status ${ps.status}">${stText}</span></span></h2>
+    <div class="note" style="margin:-4px 0 12px;padding:6px 10px"><b>${label}</b> · kesim ${tarihGoster(m.cutDate)}</div>
     <div class="f-row" style="align-items:flex-end"><div><div class="muted small">Dönem borcu</div><div class="big-num num">${tl(m.totalDue)}</div></div>
     <div style="text-align:right"><div class="muted small">Son ödeme</div><div style="font-weight:600">${tarihGoster(m.dueDate)}</div></div></div>
     <hr class="sep"><div class="kv num">
@@ -1074,7 +1084,16 @@ $('#in-invoice').onchange = async (e) => {
 $('#in-backup').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importBackup(f); };
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Yeni sürüm yayınlandığında bir kez kendini yeniler
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {});
 }
 
 // Başlat

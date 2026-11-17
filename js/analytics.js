@@ -63,7 +63,7 @@ export function latestCards(statements) {
 
 /**
  * Seçili ay için her kartın ilgili ekstresi:
- * önce son ödemesi o aya düşen (o ay ödenecek borç), yoksa hesap kesimi o aya düşen.
+ * önce hesap kesimi o aya düşen, yoksa son ödemesi o aya düşen (o ay ödenecek borç).
  * Hiçbiri yoksa st = null; ay son ekstreden sonraysa beklenen son ödeme ve taksitler döner.
  */
 export function cardsForMonth(statements, ym) {
@@ -72,7 +72,8 @@ export function cardsForMonth(statements, ym) {
   return Object.entries(by).map(([last4, list]) => {
     list.sort((a, b) => (a.meta.cutDate || '').localeCompare(b.meta.cutDate || ''));
     const latest = list[list.length - 1];
-    const st = list.find((s) => (s.meta.dueDate || '').startsWith(ym)) || list.find((s) => (s.meta.cutDate || '').startsWith(ym)) || null;
+    // Önce o ay kesilen ekstre (ayın harcamalarıyla örtüşür); henüz kesilmediyse o ay ödenecek ekstre
+    const st = list.find((s) => (s.meta.cutDate || '').startsWith(ym)) || list.find((s) => (s.meta.dueDate || '').startsWith(ym)) || null;
     let expected = null;
     if (!st && latest.meta.cutDate && ym > ayAnahtar(latest.meta.cutDate)) {
       // Bu ay ödenecek ekstre, bir önceki ay kesilen ekstredir
@@ -111,6 +112,7 @@ export function cardPaymentStatus(stmt, txs, today = bugunISO()) {
 export function installmentSchedule(stmt) {
   const months = {};
   const items = [];
+  if (!stmt.meta || !stmt.meta.cutDate) return { months: [], items: [] };
   for (const t of stmt.installments || []) {
     if (!t.remaining || !t.remaining.count) continue;
     const per = r2(t.remaining.amount / t.remaining.count);
@@ -222,7 +224,7 @@ export function buildTips(state, ym, today = bugunISO()) {
   const income = expectedIncome(settings) || sum.income;
 
   // 1-4: Kredi kartı
-  for (const st of cardsForMonth(statements, ym).map((c) => c.st).filter(Boolean)) {
+  for (const st of cardsForMonth(statements, ym).map((c) => c.st).filter(Boolean)) try {
     const m = st.meta;
     const ps = cardPaymentStatus(st, txs, today);
     const cardLabel = `•••• ${m.cardLast4}`;
@@ -247,13 +249,13 @@ export function buildTips(state, ym, today = bugunISO()) {
         `${tarihGoster(m.cutDate)} ekstresinde dönem faizi var. Bu, önceki dönem borcunun tamamının ödenmediğini gösterir. Akdi faiz aylık %${oran(rate)} (yıllık %${Math.round((rate || 0) * 1200)}) ve üzerine vergi eklenir. Kartı her ay tam kapatırsan bu kalem sıfırlanır.`);
     }
     if (m.limit) {
-      const use = (m.totalDue + (m.remainingInstallments || 0)) / m.limit;
+      const use = ((m.totalDue || 0) + (m.remainingInstallments || 0)) / m.limit;
       if (use > 0.5) add('warning', 'limit-' + st.id, `Kart limitinin ${pct(use)} kadarı dolu`,
-        `Dönem borcu ve kalan taksitler birlikte ${tl0(m.totalDue + (m.remainingInstallments || 0))}. Limit kullanım oranının %30'un altında kalması kredi notunu olumlu etkiler.`);
+        `Dönem borcu ve kalan taksitler birlikte ${tl0((m.totalDue || 0) + (m.remainingInstallments || 0))}. Limit kullanım oranının %30'un altında kalması kredi notunu olumlu etkiler.`);
     }
     if (m.pointsTL >= 100) {
       add('good', 'points-' + st.id, `${tl(m.pointsTL)} değerinde Worldpuan birikmiş`,
-        `${m.points.toLocaleString('tr-TR')} Worldpuan duruyor. World üye işyerlerinde harcamana sayarak bunu nakde yakın bir indirime çevirebilirsin; bazı kampanya puanlarının son kullanım tarihi oluyor.`);
+        `${m.points ? m.points.toLocaleString('tr-TR') + ' Worldpuan duruyor. ' : ''}World üye işyerlerinde harcamana sayarak bunu nakde yakın bir indirime çevirebilirsin; bazı kampanya puanlarının son kullanım tarihi oluyor.`);
     }
     // Taksit yükü
     const sched = installmentSchedule(st);
@@ -266,7 +268,7 @@ export function buildTips(state, ym, today = bugunISO()) {
     const cashAdv = txs.filter((t) => t.statementId === st.id).filter((t) => /NAKIT AVANS|NAKIT CEKIM/.test(norm(t.desc)));
     if (cashAdv.length) add('warning', 'cashadv-' + st.id, 'Kredi kartından nakit çekim yapılmış',
       'Kredi kartından nakit çekimde faiz aynı gün başlar ve ayrıca nakit çekim ücreti alınır. Acil değilse banka kartı ya da vadesiz hesap kullan.');
-  }
+  } catch (err) { console.error('Kart tüyosu hesaplanamadı', st.id, err); }
 
   // 5: Vadesiz hesap eksiye düşüyor (KMH)
   const od = overdraft(txs, ym);

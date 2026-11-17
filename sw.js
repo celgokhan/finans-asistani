@@ -1,5 +1,5 @@
 // Çevrimdışı çalışma: uygulama dosyaları önbellekte tutulur. Kişisel veri önbelleğe alınmaz (IndexedDB'de durur).
-const CACHE = 'finans-v1.0.1';
+const CACHE = 'finans-v1.0.3';
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/util.js', 'js/db.js', 'js/parsers.js', 'js/categorize.js', 'js/analytics.js', 'js/receipt.js', 'js/backup.js', 'js/pdftext.js',
@@ -7,7 +7,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -29,7 +29,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   // Uygulama dosyaları: önce ağ (güncel sürüm), çevrimdışıysa önbellek
-  e.respondWith(fetch(e.request).then((res) => {
+  e.respondWith(fetch(e.request, { cache: 'no-cache' }).then((res) => {
     if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
     return res;
   }).catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('index.html'))));

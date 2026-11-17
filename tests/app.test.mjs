@@ -176,13 +176,21 @@ test('kart bilgisi seçili aya göre değişir', async () => {
   const sep = mk('eyl', '2026-09-28', '2026-10-09', '2026-11-09');
   const oct = mk('eki', '2026-10-28', '2026-11-09', '2026-12-09', { installments: [{ desc: 'X', remaining: { amount: 600, count: 2 }, installment: { k: 1, n: 3 } }] });
   const pick = (ym) => cardsForMonth([oct, sep], ym)[0];
-  assert.equal(pick('2026-10').st.id, 'eyl');   // Ekim'de ödenecek: Eylül ekstresi
-  assert.equal(pick('2026-11').st.id, 'eki');   // Kasım'da ödenecek: Ekim ekstresi
   assert.equal(pick('2026-09').st.id, 'eyl');   // Eylül'de kesilen
+  assert.equal(pick('2026-10').st.id, 'eki');   // Ekim'de kesilen
+  assert.equal(pick('2026-11').st.id, 'eki');   // Kasım ekstresi yok: Kasım'da ödenecek Ekim ekstresi
   const dec = pick('2026-12');
   assert.equal(dec.st, null);
   assert.equal(dec.expected.dueDate, '2026-12-09');
   assert.equal(dec.expected.installments, 300);
   assert.equal(pick('2026-08').st, null);
   assert.equal(pick('2026-08').expected, null);
+});
+
+test('eksik alanlı ekstre tüyoları çökertmez', async () => {
+  const { buildTips, installmentSchedule } = await import('../js/analytics.js');
+  const st = { id: 'e', type: 'card', bank: 'B', meta: { cardLast4: '1', cutDate: '2026-09-28', pointsTL: 500, limit: 1000 }, installments: [] };
+  const state = { txs: [], statements: [st, { id: 'f', type: 'card', bank: 'B', meta: { cardLast4: '2', dueDate: '2026-09-10' } }], settings: { budgets: {}, incomeSources: [], goals: [], assets: [], rules: [] } };
+  assert.doesNotThrow(() => buildTips(state, '2026-09', '2026-09-30'));
+  assert.deepEqual(installmentSchedule({ meta: {} }), { months: [], items: [] });
 });
