@@ -61,6 +61,33 @@ export function latestCards(statements) {
   return Object.values(by);
 }
 
+/**
+ * Seçili ay için her kartın ilgili ekstresi:
+ * önce son ödemesi o aya düşen (o ay ödenecek borç), yoksa hesap kesimi o aya düşen.
+ * Hiçbiri yoksa st = null; ay son ekstreden sonraysa beklenen son ödeme ve taksitler döner.
+ */
+export function cardsForMonth(statements, ym) {
+  const by = {};
+  for (const s of statements.filter((x) => x.type === 'card')) (by[s.meta.cardLast4 || s.id] = by[s.meta.cardLast4 || s.id] || []).push(s);
+  return Object.entries(by).map(([last4, list]) => {
+    list.sort((a, b) => (a.meta.cutDate || '').localeCompare(b.meta.cutDate || ''));
+    const latest = list[list.length - 1];
+    const st = list.find((s) => (s.meta.dueDate || '').startsWith(ym)) || list.find((s) => (s.meta.cutDate || '').startsWith(ym)) || null;
+    let expected = null;
+    if (!st && latest.meta.cutDate && ym > ayAnahtar(latest.meta.cutDate)) {
+      // Bu ay ödenecek ekstre, bir önceki ay kesilen ekstredir
+      const cutYm = ayKaydir(ym, -1);
+      const inst = installmentSchedule(latest).months.find((m) => m.ym === cutYm);
+      expected = {
+        dueDate: (latest.meta.nextDueDate || '').startsWith(ym) ? latest.meta.nextDueDate : null,
+        installments: inst ? inst.value : 0,
+        cutYm,
+      };
+    }
+    return { last4, bank: latest.bank, st, latest, expected, before: !st && ym < ayAnahtar(list[0].meta.cutDate || ym) };
+  });
+}
+
 /** Son ekstrenin ödenme durumu */
 export function cardPaymentStatus(stmt, txs, today = bugunISO()) {
   const m = stmt.meta;
@@ -195,7 +222,7 @@ export function buildTips(state, ym, today = bugunISO()) {
   const income = expectedIncome(settings) || sum.income;
 
   // 1-4: Kredi kartı
-  for (const st of latestCards(statements)) {
+  for (const st of cardsForMonth(statements, ym).map((c) => c.st).filter(Boolean)) {
     const m = st.meta;
     const ps = cardPaymentStatus(st, txs, today);
     const cardLabel = `•••• ${m.cardLast4}`;

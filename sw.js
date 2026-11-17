@@ -1,5 +1,5 @@
 // Çevrimdışı çalışma: uygulama dosyaları önbellekte tutulur. Kişisel veri önbelleğe alınmaz (IndexedDB'de durur).
-const CACHE = 'finans-v1.0.0';
+const CACHE = 'finans-v1.0.1';
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/util.js', 'js/db.js', 'js/parsers.js', 'js/categorize.js', 'js/analytics.js', 'js/receipt.js', 'js/backup.js', 'js/pdftext.js',

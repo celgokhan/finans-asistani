@@ -169,3 +169,20 @@ test('yardımcılar', () => {
   assert.equal(norm('Çağlayan İŞ'), 'CAGLAYAN IS');
   assert.equal(itemsToLines([{ str: 'b', x: 50, y: 10 }, { str: 'a', x: 10, y: 11 }])[0].text, 'a b');
 });
+
+test('kart bilgisi seçili aya göre değişir', async () => {
+  const { cardsForMonth } = await import('../js/analytics.js');
+  const mk = (id, cut, due, nextDue, extra = {}) => ({ id, type: 'card', bank: 'Banka', meta: { cardLast4: '9999', cutDate: cut, dueDate: due, nextDueDate: nextDue, totalDue: 100 }, installments: [], ...extra });
+  const sep = mk('eyl', '2026-09-28', '2026-10-09', '2026-11-09');
+  const oct = mk('eki', '2026-10-28', '2026-11-09', '2026-12-09', { installments: [{ desc: 'X', remaining: { amount: 600, count: 2 }, installment: { k: 1, n: 3 } }] });
+  const pick = (ym) => cardsForMonth([oct, sep], ym)[0];
+  assert.equal(pick('2026-10').st.id, 'eyl');   // Ekim'de ödenecek: Eylül ekstresi
+  assert.equal(pick('2026-11').st.id, 'eki');   // Kasım'da ödenecek: Ekim ekstresi
+  assert.equal(pick('2026-09').st.id, 'eyl');   // Eylül'de kesilen
+  const dec = pick('2026-12');
+  assert.equal(dec.st, null);
+  assert.equal(dec.expected.dueDate, '2026-12-09');
+  assert.equal(dec.expected.installments, 300);
+  assert.equal(pick('2026-08').st, null);
+  assert.equal(pick('2026-08').expected, null);
+});

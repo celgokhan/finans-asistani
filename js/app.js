@@ -3,11 +3,11 @@ import { tl, tl0, pct, esc, uid, hash, r2, bugunISO, ayAnahtar, ayAdi, ayKaydir,
 import { CATEGORIES, CAT, catName, catIcon, catKind, classify, merchantKey, prettyMerchant, parseFast } from './categorize.js';
 import { parseStatement } from './parsers.js';
 import { pdfToPages } from './pdftext.js';
-import { monthSummary, monthsWithData, trend, latestCards, cardPaymentStatus, installmentSchedule, subscriptions, budgetStatus, buildTips, fundPrices, assetValue, avgExpense, expectedIncome } from './analytics.js';
+import { monthSummary, monthsWithData, trend, cardsForMonth, cardPaymentStatus, installmentSchedule, subscriptions, budgetStatus, buildTips, fundPrices, assetValue, avgExpense, expectedIncome } from './analytics.js';
 import { prepareImage, ocrImage, parseReceiptText } from './receipt.js';
 import { encryptJSON, decryptJSON, blobToDataURL, dataURLToBlob } from './backup.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const DEFAULT_SETTINGS = {
   ownerNames: [], incomeSources: [], budgets: {}, rules: [], goals: [], assets: [], rates: {}, lastBackupAt: null,
 };
@@ -166,10 +166,9 @@ function viewOzet() {
     <div class="kpi"><div class="k">Net</div><div class="v num" style="color:${sum.net >= 0 ? 'var(--good)' : 'var(--critical)'}">${sum.net >= 0 ? '+' : ''}${tl0(sum.net)}</div><div class="s">${sum.savingsRate != null ? 'Tasarruf ' + pct(sum.savingsRate) : 'Gelir girilmedi'}</div></div>
   </div>`;
 
-  for (const st of latestCards(S.statements)) {
-    const ps = cardPaymentStatus(st, S.txs);
-    if (ps.status === 'paid' && ps.daysLeft != null && ps.daysLeft < -20) continue;
-    h += cardDueCard(st, ps, true);
+  for (const c of cardsForMonth(S.statements, S.ym)) {
+    if (c.st) h += cardDueCard(c.st, cardPaymentStatus(c.st, S.txs), true);
+    else if (c.expected) h += cardPendingCard(c);
   }
 
   if (tips.length) {
@@ -313,12 +312,27 @@ function planButce() {
   return h;
 }
 
+function cardPendingCard(c) {
+  const e = c.expected;
+  return `<div class="card"><h2>💳 ${esc(c.bank)} •••• ${esc(c.last4)}<span class="right"><span class="status open">Ekstre yüklenmedi</span></span></h2>
+    <p class="small" style="margin:0">${ayAdi(S.ym)} ayında ödenecek ${ayAdi(e.cutYm)} ekstresi henüz yüklenmedi.</p>
+    <div class="kv num" style="margin-top:10px">
+      ${e.dueDate ? `<div class="k">Beklenen son ödeme</div><div class="v">${tarihGoster(e.dueDate)}</div>` : ''}
+      ${e.installments ? `<div class="k">Bu ekstreye girecek taksitler</div><div class="v">${tl(e.installments)}</div>` : ''}
+      <div class="k">Son yüklenen ekstre</div><div class="v">Kesim ${tarihGoster(c.latest.meta.cutDate)}</div>
+    </div>
+    <div class="btns"><button class="btn sm" data-act="import-pdf">Ekstre yükle</button></div></div>`;
+}
+
 function planKart() {
-  const cards = latestCards(S.statements);
+  const cards = cardsForMonth(S.statements, S.ym);
   if (!cards.length) return `<div class="card empty"><div class="big">💳</div>Kart ekstresi yüklenince ödeme durumu ve taksit takvimi burada görünür.<div class="btns"><button class="btn primary" data-act="import-pdf">Ekstre yükle</button></div></div>`;
   let h = '';
-  for (const st of cards) {
-    h += cardDueCard(st, cardPaymentStatus(st, S.txs), false);
+  for (const c of cards) {
+    if (c.st) h += cardDueCard(c.st, cardPaymentStatus(c.st, S.txs), false);
+    else if (c.expected) h += cardPendingCard(c);
+    else h += `<div class="card"><h2>💳 ${esc(c.bank)} •••• ${esc(c.last4)}</h2><p class="muted small" style="margin:0">${ayAdi(S.ym)} için yüklenmiş ekstre yok. İlk ekstre: kesim ${tarihGoster(c.latest.meta.cutDate)}.</p></div>`;
+    const st = c.st || c.latest;
     const sch = installmentSchedule(st);
     if (sch.months.length) {
       const max = Math.max(...sch.months.map((m) => m.value));
