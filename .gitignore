@@ -1,0 +1,13 @@
+# Kişisel finans verisi asla depoya girmez
+*.pdf
+*.fay
+*.xlsx
+*.xls
+*.csv
+*.jpg
+*.jpeg
+*.heic
+ornek/
+ekstreler/
+node_modules/
+.DS_Store
